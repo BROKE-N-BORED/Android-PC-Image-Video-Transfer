@@ -26,6 +26,7 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         private readonly Action<IReadOnlyCollection<MediaItemViewModel>> _startTransfer;
         private readonly Action<MediaItemViewModel, IReadOnlyList<MediaItemViewModel>> _openPreview;
         private readonly Action _selectionChanged;
+        private readonly Action<IReadOnlyCollection<MediaItemViewModel>> _deleteItems;
 
         private readonly List<MediaItemViewModel> _allItems = new();
         private readonly Dictionary<string, MediaItemViewModel> _itemsByPath = new(StringComparer.Ordinal);
@@ -41,8 +42,10 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         internal LibraryViewModel(LibraryKind kind, SettingsManager settingsManager, ThumbnailManager thumbnails,
             Action<IReadOnlyCollection<MediaItemViewModel>> startTransfer,
             Action<MediaItemViewModel, IReadOnlyList<MediaItemViewModel>> openPreview,
-            Action selectionChanged)
+            Action selectionChanged,
+            Action<IReadOnlyCollection<MediaItemViewModel>> deleteItems)
         {
+            _deleteItems = deleteItems;
             Kind = kind;
             _settingsManager = settingsManager;
             _thumbnails = thumbnails;
@@ -167,6 +170,7 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         [ObservableProperty] private bool _canTransferAll;
         [ObservableProperty] private bool _canImportNew;
         [ObservableProperty] private bool _canSelect;
+        [ObservableProperty] private bool _canDelete;
 
         [ObservableProperty] private bool _showEmptyPanel;
         [ObservableProperty] private string _emptyMessage = "";
@@ -280,6 +284,7 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         {
             CanSelect = _ready && VisibleItems.Count > 0;
             CanTransferSelected = _ready && _idle && SelectedCount > 0;
+            CanDelete = _ready && _idle && SelectedCount > 0;
             CanTransferAll = _ready && _idle && _allItems.Count > 0;
             CanImportNew = _ready && _idle && NewItemsCount > 0;
             ImportNewText = NewItemsCount > 0 ? $"Import New ({NewItemsCount:N0})" : "Import New";
@@ -515,5 +520,45 @@ namespace AndroidPhotoTransfer.UI.ViewModels
 
         [RelayCommand]
         private void ImportNew() => _startTransfer(_allItems.Where(v => !v.AlreadyTransferred).ToList());
+
+        [RelayCommand]
+        private void DeleteSelected() => _deleteItems(_allItems.Where(v => v.IsChecked).ToList());
+
+        /// <summary>After items were deleted from the phone: drop them from the lists, counts and folder tree.</summary>
+        internal void RemoveItems(IEnumerable<string> paths)
+        {
+            var removed = new List<MediaItemViewModel>();
+            foreach (var path in paths)
+            {
+                if (_itemsByPath.Remove(path, out var vm)) removed.Add(vm);
+            }
+            if (removed.Count == 0) return;
+
+            SetChecked(removed.Where(v => v.IsChecked).ToList(), false);
+            var gone = removed.ToHashSet();
+            _allItems.RemoveAll(gone.Contains);
+
+            var categories = AllCategories.ToList();
+            foreach (var vm in removed)
+            {
+                foreach (var category in categories)
+                {
+                    if (category.Matches(vm.Item)) category.Count--;
+                }
+                if (_storageNodes.TryGetValue(vm.Item.StorageName, out var node))
+                {
+                    node.Count--;
+                    foreach (var segment in vm.Item.Folder.Split('/', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        node = node.GetOrAddChild(segment);
+                        node.Count--;
+                    }
+                }
+            }
+
+            NewItemsCount = _allItems.Count(v => !v.AlreadyTransferred);
+            OnPropertyChanged(nameof(ItemCount));
+            RefreshView();
+        }
     }
 }

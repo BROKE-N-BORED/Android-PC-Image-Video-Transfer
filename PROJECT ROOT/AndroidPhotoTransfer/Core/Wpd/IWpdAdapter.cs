@@ -43,6 +43,9 @@ namespace AndroidPhotoTransfer.Core.Wpd
         /// <summary>Reads a whole (small) file, used for previews. Throws if the file is larger than <paramref name="maxBytes"/>.</summary>
         Task<byte[]> ReadAllBytesAsync(string path, string? persistentId, long maxBytes, CancellationToken ct);
 
+        /// <summary>Permanently deletes a file from the phone.</summary>
+        Task DeleteFileAsync(string path, CancellationToken ct);
+
         /// <summary>Whether the connection is alive and Windows still lists this device.</summary>
         Task<bool> IsStillConnectedAsync();
     }

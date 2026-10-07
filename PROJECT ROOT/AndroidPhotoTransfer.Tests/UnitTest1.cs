@@ -98,6 +98,13 @@ internal sealed class FakePhone : IWpdAdapter
     public Task<byte[]> ReadAllBytesAsync(string path, string? persistentId, long maxBytes, CancellationToken ct) =>
         Task.FromResult(_files[path]);
 
+    public Task DeleteFileAsync(string path, CancellationToken ct)
+    {
+        ThrowIfDisconnected();
+        _files.Remove(path);
+        return Task.CompletedTask;
+    }
+
     public Task<bool> IsStillConnectedAsync() => Task.FromResult(Connected);
 
     public void Dispose() { }

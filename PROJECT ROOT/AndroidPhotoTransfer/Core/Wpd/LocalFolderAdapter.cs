@@ -45,6 +45,8 @@ namespace AndroidPhotoTransfer.Core.Wpd
         public Task<byte[]> ReadAllBytesAsync(string path, string? persistentId, long maxBytes, CancellationToken ct) =>
             File.ReadAllBytesAsync(persistentId ?? path, ct);
 
+        public Task DeleteFileAsync(string path, CancellationToken ct) => Task.Run(() => File.Delete(path), ct);
+
         public Task<bool> IsStillConnectedAsync() => Task.FromResult(IsConnected);
 
         public void Dispose() { }

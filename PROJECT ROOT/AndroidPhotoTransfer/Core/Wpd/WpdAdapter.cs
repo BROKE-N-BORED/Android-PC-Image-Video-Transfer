@@ -274,6 +274,13 @@ namespace AndroidPhotoTransfer.Core.Wpd
                 return buffer.ToArray();
             }), ct, highPriority: true);
 
+        public Task DeleteFileAsync(string path, CancellationToken ct) =>
+            _worker.RunAsync(() => Guard(() =>
+            {
+                _device.DeleteFile(path);
+                return true;
+            }), ct, highPriority: true);
+
         public async Task<bool> IsStillConnectedAsync()
         {
             if (!IsConnected) return false;

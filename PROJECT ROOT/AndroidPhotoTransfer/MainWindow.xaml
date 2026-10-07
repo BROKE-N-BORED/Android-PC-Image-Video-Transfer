@@ -249,6 +249,14 @@
                         <Button Content="Select All" Command="{Binding SelectAllCommand}" IsEnabled="{Binding CanSelect}" Margin="0,0,8,0"
                                 ToolTip="Tick everything in the current view (Ctrl+A)" />
                         <Button Content="Clear" Command="{Binding ClearSelectionCommand}" IsEnabled="{Binding CanSelect}" Margin="0,0,8,0" />
+                        <Button Command="{Binding DeleteSelectedCommand}" IsEnabled="{Binding CanDelete}" Margin="0,0,8,0"
+                                Foreground="{StaticResource ErrorBrush}" ToolTip="Permanently delete the ticked items from the phone (asks first)"
+                                AutomationProperties.Name="Delete from Phone">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE74D;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,1,6,0" />
+                                <TextBlock Text="Delete from Phone" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
                         <Button Content="{Binding ImportNewText}" Command="{Binding ImportNewCommand}" IsEnabled="{Binding CanImportNew}" Margin="0,0,8,0"
                                 ToolTip="Copy only what hasn't been transferred from this phone before" />
                         <Button Content="Transfer All" Command="{Binding TransferAllCommand}" IsEnabled="{Binding CanTransferAll}" Margin="0,0,8,0"
@@ -378,10 +386,18 @@
                 <StackPanel>
                     <TextBlock Text="{Binding MessageTitle}" FontSize="18" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding MessageBody}" TextWrapping="Wrap" Margin="0,14,0,0" LineHeight="20" />
+                    <TextBlock Text="{Binding MessageWarning}" TextWrapping="Wrap" Margin="0,10,0,0" FontWeight="Bold"
+                               Foreground="{StaticResource ErrorBrush}" Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
                         <Button Content="Choose Another Folder" Command="{Binding ChangeFolderFromMessageCommand}" Margin="0,0,8,0"
                                 Visibility="{Binding MessageOffersFolderChange, Converter={StaticResource BoolToVis}}" />
-                        <Button Content="OK" Command="{Binding DismissMessageCommand}" Style="{StaticResource PrimaryButton}" MinWidth="90" />
+                        <Button Content="OK" Command="{Binding DismissMessageCommand}" Style="{StaticResource PrimaryButton}" MinWidth="90"
+                                Visibility="{Binding HasConfirm, Converter={StaticResource InverseBoolToVis}}" />
+                        <Button Content="Cancel" Command="{Binding DismissMessageCommand}" MinWidth="90" Margin="0,0,8,0" IsCancel="True"
+                                Visibility="{Binding HasConfirm, Converter={StaticResource BoolToVis}}" />
+                        <Button Content="{Binding MessageConfirmText}" Command="{Binding ConfirmMessageCommand}" MinWidth="90"
+                                Background="{StaticResource ErrorBrush}" Foreground="White" BorderBrush="{StaticResource ErrorBrush}" FontWeight="SemiBold"
+                                Visibility="{Binding HasConfirm, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
                 </StackPanel>
             </Border>

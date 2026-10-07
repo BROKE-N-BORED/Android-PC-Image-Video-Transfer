@@ -54,8 +54,8 @@ namespace AndroidPhotoTransfer.UI.ViewModels
             _history = history;
             _dispatcher = dispatcher;
 
-            MediaLibrary = new LibraryViewModel(LibraryKind.Media, settingsManager, thumbnails, StartTransfer, OpenPreview, OnSelectionChanged);
-            FilesLibrary = new LibraryViewModel(LibraryKind.Files, settingsManager, thumbnails, StartTransfer, OpenPreview, OnSelectionChanged);
+            MediaLibrary = new LibraryViewModel(LibraryKind.Media, settingsManager, thumbnails, StartTransfer, OpenPreview, OnSelectionChanged, AskToDelete);
+            FilesLibrary = new LibraryViewModel(LibraryKind.Files, settingsManager, thumbnails, StartTransfer, OpenPreview, OnSelectionChanged, AskToDelete);
             foreach (var library in Libraries)
             {
                 var lib = library;
@@ -149,6 +149,17 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         [ObservableProperty] private string _messageTitle = "";
         [ObservableProperty] private string _messageBody = "";
         [ObservableProperty] private bool _messageOffersFolderChange;
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(HasConfirm))]
+        private string? _messageConfirmText;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(HasWarning))]
+        private string? _messageWarning;
+
+        public bool HasConfirm => MessageConfirmText != null;
+        public bool HasWarning => MessageWarning != null;
+        private Func<Task>? _pendingConfirm;
 
         public event Action<PreviewViewModel>? PreviewRequested;
         public event Action<SettingsViewModel>? SettingsRequested;
@@ -491,12 +502,92 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         {
             MessageTitle = title;
             MessageBody = body;
+            MessageWarning = null;
             MessageOffersFolderChange = offerFolderChange;
+            MessageConfirmText = null;
+            _pendingConfirm = null;
             ShowMessage = true;
         }
 
         [RelayCommand]
-        private void DismissMessage() => ShowMessage = false;
+        private void DismissMessage()
+        {
+            ShowMessage = false;
+            _pendingConfirm = null;
+        }
+
+        [RelayCommand]
+        private async Task ConfirmMessage()
+        {
+            var action = _pendingConfirm;
+            ShowMessage = false;
+            _pendingConfirm = null;
+            if (action != null) await action();
+        }
+
+        // =====================================================================================
+        // Delete from phone
+        // =====================================================================================
+
+        private void AskToDelete(IReadOnlyCollection<MediaItemViewModel> items)
+        {
+            if (items.Count == 0 || Transfer.IsRunning || _activeDevice == null) return;
+            var device = _activeDevice;
+            long bytes = items.Sum(v => v.Item.Size);
+            int notOnPc = items.Count(v => !v.AlreadyTransferred);
+
+            MessageTitle = "Delete from phone?";
+            MessageBody = $"Permanently delete {items.Count:N0} {(items.Count == 1 ? "item" : "items")} " +
+                          $"({FileUtilities.FormatBytes(bytes)}) from {DeviceName}?\n\nThis can't be undone.";
+            MessageWarning = notOnPc > 0
+                ? $"{notOnPc:N0} of these {(notOnPc == 1 ? "has" : "have")} NOT been copied to this PC yet."
+                : null;
+            MessageOffersFolderChange = false;
+            MessageConfirmText = "Delete";
+            _pendingConfirm = () => DeleteAsync(device, items.ToList());
+            ShowMessage = true;
+        }
+
+        private async Task DeleteAsync(IWpdAdapter device, List<MediaItemViewModel> items)
+        {
+            Logger.Info($"Deleting {items.Count} item(s) from {device.Info.Name}");
+            var deleted = new List<string>();
+            var failed = new List<string>();
+            IsIdle = false;
+            foreach (var library in Libraries) library.SetEnvironment(false, false, IsScanning, _scanError);
+            try
+            {
+                int done = 0;
+                foreach (var vm in items)
+                {
+                    StatusText = $"Deleting from phone…  {++done:N0} / {items.Count:N0}";
+                    try
+                    {
+                        await device.DeleteFileAsync(vm.Item.Path, CancellationToken.None);
+                        deleted.Add(vm.Item.Path);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Could not delete {vm.Item.Name}", ex);
+                        failed.Add(vm.Item.Name);
+                        if (ex is DeviceDisconnectedException) break;
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var library in Libraries) library.RemoveItems(deleted);
+                UpdateEnvironment();
+            }
+
+            Logger.Info($"Deleted {deleted.Count} item(s), {failed.Count} failed");
+            if (failed.Count > 0)
+            {
+                ShowMessageBox("Some items weren't deleted",
+                    $"Deleted {deleted.Count:N0}. Couldn't delete {failed.Count:N0}:\n" + string.Join("\n", failed.Take(8)) +
+                    (failed.Count > 8 ? "\n…" : "") + "\n\nThe phone may protect some files. Unlock it and try again.");
+            }
+        }
 
         [RelayCommand]
         private void ChangeFolderFromMessage()
