@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+Android Photo Transfer (ready to run)/
+
+# Planning / AI working files (kept locally, not part of the published source)
+PROJECT ROOT/.agents/
+PROJECT ROOT/*.md
+PROJECT ROOT/*.txt
+PROJECT ROOT/*.jpg
+PROJECT_REVIEW_AND_PLAN.md
+PROJECT ROOT/AndroidPhotoTransfer/test_devices.cs
+_antigravity_backup/

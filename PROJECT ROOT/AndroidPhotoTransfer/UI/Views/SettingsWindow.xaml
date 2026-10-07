@@ -1,0 +1,72 @@
+<Window x:Class="AndroidPhotoTransfer.UI.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:AndroidPhotoTransfer.UI.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+        Title="Settings" Width="520" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13" Background="White" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style x:Key="Header" TargetType="TextBlock" BasedOn="{StaticResource SectionHeader}">
+            <Setter Property="Margin" Value="0,18,0,8" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,4" />
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="24,8,24,20">
+        <TextBlock Text="GENERAL" Style="{StaticResource Header}" />
+        <TextBlock Text="Default destination" Margin="0,0,0,4" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Text="{Binding DefaultDestination, Mode=OneWay}" IsReadOnly="True" Padding="6,4" VerticalContentAlignment="Center" />
+            <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseCommand}" Margin="8,0,0,0" />
+        </Grid>
+        <CheckBox Content="Remember the last folder I chose on the main screen" IsChecked="{Binding RememberDestination}" Margin="0,10,0,4" />
+        <CheckBox Content="Open the destination folder after a transfer" IsChecked="{Binding OpenFolderAfterTransfer}" />
+        <CheckBox Content="Put photos in subfolders matching the phone (Camera, Screenshots…)" IsChecked="{Binding OrganizeByPhoneFolder}" />
+
+        <TextBlock Text="TRANSFER" Style="{StaticResource Header}" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="200" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="When the same file is already on this PC:" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding ExistingFileOptions}" DisplayMemberPath="Label"
+                      SelectedValuePath="Value" SelectedValue="{Binding SkipExistingFiles}" />
+        </Grid>
+        <TextBlock Text="Files are never overwritten. A different photo with the same name is saved as name_1, name_2…"
+                   TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource SubtleTextBrush}" Margin="0,6,0,0" />
+
+        <TextBlock Text="PERFORMANCE" Style="{StaticResource Header}" />
+        <CheckBox Content="Show thumbnails while browsing" IsChecked="{Binding GenerateThumbnails}" />
+        <Grid Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="120" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Thumbnail memory limit (MB)" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding CacheSizes}" SelectedItem="{Binding ThumbnailCacheMegabytes}" />
+        </Grid>
+
+        <TextBlock Text="APPLICATION" Style="{StaticResource Header}" />
+        <StackPanel Orientation="Horizontal">
+            <Button Content="Clear Thumbnail Cache" Command="{Binding ClearThumbnailCacheCommand}" Margin="0,0,8,0" />
+            <Button Content="Open Logs" Command="{Binding OpenLogsCommand}" />
+        </StackPanel>
+        <TextBlock Text="{Binding CacheUsageText}" FontSize="12" Foreground="{StaticResource SubtleTextBrush}" Margin="0,6,0,0" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+            <Button Content="Save" Command="{Binding SaveCommand}" Style="{StaticResource PrimaryButton}" MinWidth="90" Margin="0,0,8,0" IsDefault="True" />
+            <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="90" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

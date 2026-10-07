@@ -1,0 +1,66 @@
+<Window x:Class="AndroidPhotoTransfer.UI.Views.PreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:AndroidPhotoTransfer.UI.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:PreviewViewModel}"
+        Title="{Binding Title}" Width="980" Height="760" MinWidth="520" MinHeight="420"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13" Background="White" UseLayoutRounding="True">
+    <Window.InputBindings>
+        <KeyBinding Key="Left" Command="{Binding PreviousCommand}" />
+        <KeyBinding Key="Right" Command="{Binding NextCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Background="#1F1F1F">
+            <Image Source="{Binding Image}" Stretch="Uniform" StretchDirection="DownOnly" Margin="12"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+            <ProgressBar IsIndeterminate="True" Width="200" Height="4" VerticalAlignment="Bottom" Margin="0,0,0,24"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+            <Border Background="#CC000000" CornerRadius="6" Padding="16,10" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Margin="0,0,0,24" MaxWidth="560">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Message}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding Message}" Foreground="White" TextWrapping="Wrap" TextAlignment="Center" />
+            </Border>
+            <Button Content="&#xE76B;" FontFamily="{StaticResource IconFont}" Command="{Binding PreviousCommand}" FontSize="18"
+                    HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12" Opacity="0.85" ToolTip="Previous (Left arrow)" />
+            <Button Content="&#xE76C;" FontFamily="{StaticResource IconFont}" Command="{Binding NextCommand}" FontSize="18"
+                    HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12" Opacity="0.85" ToolTip="Next (Right arrow)" />
+        </Grid>
+
+        <Border Grid.Row="1" Background="{StaticResource ChromeBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="18,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Details}" Foreground="{StaticResource SubtleTextBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding PositionText}" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,2,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Transfer" Command="{Binding TransferCommand}" Style="{StaticResource PrimaryButton}" MinWidth="100" Margin="0,0,8,0" />
+                    <Button Content="Close" Command="{Binding CloseCommand}" MinWidth="90" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

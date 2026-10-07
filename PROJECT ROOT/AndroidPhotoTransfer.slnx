@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AndroidPhotoTransfer.Tests/AndroidPhotoTransfer.Tests.csproj" />
+  <Project Path="AndroidPhotoTransfer/AndroidPhotoTransfer.csproj" />
+</Solution>

@@ -1,0 +1,336 @@
+<UserControl x:Class="AndroidPhotoTransfer.UI.Views.LibraryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AndroidPhotoTransfer.UI.ViewModels"
+             xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:LibraryViewModel}"
+             d:DesignWidth="1000" d:DesignHeight="560">
+
+    <UserControl.Resources>
+        <!-- Sidebar category item -->
+        <Style x:Key="SidebarItem" TargetType="ListBoxItem">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid Background="Transparent" Margin="6,1">
+                            <Border x:Name="Bd" CornerRadius="4" Background="Transparent" />
+                            <Border x:Name="Bar" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left"
+                                    Background="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                            <ContentPresenter Margin="10,6" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#ECECEC" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E6E6E6" />
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Grid tiles: no ListBox selection chrome; ticking is handled by the view model -->
+        <Style x:Key="TileContainer" TargetType="ListBoxItem">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ViewToggle" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="15" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="232" MinWidth="170" MaxWidth="440" />
+            <ColumnDefinition Width="5" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ============================== Sidebar ============================== -->
+        <Border Grid.Column="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="PHONE" Style="{StaticResource SectionHeader}" Margin="16,12,0,6" />
+
+                <ListBox Grid.Row="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}"
+                         ItemContainerStyle="{StaticResource SidebarItem}" Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Categories">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:CategoryViewModel}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}"
+                                           FontSize="14" Width="26" VerticalAlignment="Center" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Count, StringFormat={}{0:N0}}" FontSize="12"
+                                           Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock Grid.Row="2" Text="FOLDERS" Style="{StaticResource SectionHeader}" Margin="16,14,0,6" />
+
+                <TreeView Grid.Row="3" ItemsSource="{Binding FolderRoots}" Background="Transparent"
+                          BorderThickness="0" Padding="4,0,4,8" SelectedItemChanged="FolderTree_SelectedItemChanged"
+                          VirtualizingPanel.IsVirtualizing="True" AutomationProperties.Name="Phone folders"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <TreeView.ItemContainerStyle>
+                        <Style TargetType="TreeViewItem">
+                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                            <Setter Property="Padding" Value="2,3" />
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type vm:TreeNodeViewModel}" ItemsSource="{Binding Children}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" Foreground="#C88A00"
+                                           VerticalAlignment="Center" Margin="0,0,7,0" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Count, StringFormat={}  {0:N0}}" FontSize="11"
+                                           Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
+                      ResizeBehavior="PreviousAndNext" Focusable="False" />
+
+        <!-- ============================== Content ============================== -->
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Toolbar -->
+            <Grid Margin="12,10,14,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="{Binding ViewTitle}" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="2,0,8,0" />
+
+                <Grid Grid.Column="1" Width="200">
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Padding="6,5,28,5" VerticalContentAlignment="Center" AutomationProperties.Name="Search" />
+                    <TextBlock Text="Search…" Foreground="#8A8A8A" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               Margin="0,0,9,0" Foreground="#6A6A6A" IsHitTestVisible="False" />
+                </Grid>
+
+                <ComboBox Grid.Column="2" Margin="8,0,0,0" MinWidth="124" VerticalContentAlignment="Center"
+                          ItemsSource="{Binding TransferStateOptions}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                          SelectedValue="{Binding TransferFilter}" AutomationProperties.Name="Show"
+                          ToolTip="Show everything, only what isn't on this PC yet, or only what's already been transferred" />
+                <ComboBox Grid.Column="3" Margin="8,0,0,0" MinWidth="120" VerticalContentAlignment="Center"
+                          ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                          SelectedValue="{Binding SortMode}" AutomationProperties.Name="Sort order" />
+                <ComboBox Grid.Column="4" Margin="8,0,0,0" MinWidth="124" VerticalContentAlignment="Center"
+                          ItemsSource="{Binding TypeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                          SelectedValue="{Binding TypeFilter}" AutomationProperties.Name="Media type filter"
+                          Visibility="{Binding IsMediaLibrary, Converter={StaticResource BoolToVis}}" />
+
+                <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="8,0,0,0">
+                    <Button Content="&#xF0E2;" Command="{Binding ShowGridCommand}" ToolTip="Thumbnail view" AutomationProperties.Name="Thumbnail view">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource ViewToggle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsGridView}" Value="True">
+                                        <Setter Property="Background" Value="#E3E3E3" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="&#xE8FD;" Command="{Binding ShowListCommand}" ToolTip="List view" AutomationProperties.Name="List view">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource ViewToggle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsGridView}" Value="False">
+                                        <Setter Property="Background" Value="#E3E3E3" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1">
+                <!-- Thumbnail grid (virtualized: only visible tiles exist) -->
+                <ListBox x:Name="ItemGrid" ItemsSource="{Binding VisibleItems}"
+                         Visibility="{Binding IsGridView, Converter={StaticResource BoolToVis}}"
+                         ItemContainerStyle="{StaticResource TileContainer}"
+                         BorderThickness="0" Background="Transparent" Padding="8,0,4,8"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Standard"
+                         VirtualizingPanel.CacheLengthUnit="Page" VirtualizingPanel.CacheLength="0.5,0.5"
+                         VirtualizingPanel.ScrollUnit="Pixel" AutomationProperties.Name="Items">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <vwp:VirtualizingWrapPanel ItemSize="160,186" SpacingMode="Uniform" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:MediaItemViewModel}">
+                            <Border x:Name="Tile" Width="152" Height="178" Margin="4" CornerRadius="6" BorderThickness="2"
+                                    BorderBrush="Transparent" Background="White" ToolTip="{Binding ToolTipText}"
+                                    Loaded="Tile_Loaded" Unloaded="Tile_Unloaded" MouseLeftButtonDown="Tile_MouseLeftButtonDown"
+                                    AutomationProperties.Name="{Binding Name}">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Preview" Click="PreviewMenu_Click" />
+                                        <MenuItem Header="Transfer" Click="TransferMenu_Click" />
+                                        <MenuItem Header="Select / Deselect" Click="ToggleMenu_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Open Phone Folder" Click="ShowFolderMenu_Click" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid Margin="5">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="122" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <Border CornerRadius="4" Background="#EEF0F3" ClipToBounds="True">
+                                        <Grid>
+                                            <TextBlock Text="{Binding TypeGlyph}" FontFamily="{StaticResource IconFont}" FontSize="30"
+                                                       Foreground="#A9AEB5" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"
+                                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                                            <Border Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}" Background="#B0000000"
+                                                    CornerRadius="3" Padding="5,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="5">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" FontSize="10" Foreground="White"
+                                                               VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                    <TextBlock Text="VIDEO" FontSize="10" Foreground="White" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Visibility="{Binding AlreadyTransferred, Converter={StaticResource BoolToVis}}"
+                                                    Background="{StaticResource SuccessBrush}" CornerRadius="9" Width="18" Height="18"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5"
+                                                    ToolTip="Already transferred to this PC">
+                                                <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" FontSize="10" Foreground="White"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <CheckBox IsChecked="{Binding IsChecked}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6"
+                                              Focusable="False" AutomationProperties.Name="{Binding Name}" />
+
+                                    <TextBlock Grid.Row="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontSize="12"
+                                               HorizontalAlignment="Center" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="2" Text="{Binding SizeText, StringFormat=({0})}" FontSize="11"
+                                               Foreground="{StaticResource SubtleTextBrush}" HorizontalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <Trigger SourceName="Tile" Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Tile" Property="Background" Value="#F4F6F8" />
+                                    <Setter TargetName="Tile" Property="BorderBrush" Value="#D6DCE2" />
+                                </Trigger>
+                                <DataTrigger Binding="{Binding IsChecked}" Value="True">
+                                    <Setter TargetName="Tile" Property="Background" Value="{StaticResource AccentLightBrush}" />
+                                    <Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- List view (lighter; good for huge libraries) -->
+                <ListView x:Name="ItemList" ItemsSource="{Binding VisibleItems}"
+                          Visibility="{Binding IsGridView, Converter={StaticResource InverseBoolToVis}}"
+                          BorderThickness="0,1,0,0" BorderBrush="{StaticResource DividerBrush}" SelectionMode="Extended"
+                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                          MouseDoubleClick="ItemList_MouseDoubleClick" PreviewKeyDown="ItemList_PreviewKeyDown"
+                          AutomationProperties.Name="Items list">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Width="38">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsChecked}" Focusable="False" AutomationProperties.Name="{Binding Name}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Name" Width="300">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding TypeGlyph}" FontFamily="{StaticResource IconFont}" Foreground="#6A6F76"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Date" Width="165" DisplayMemberBinding="{Binding DateText}" />
+                            <GridViewColumn Header="Size" Width="85" DisplayMemberBinding="{Binding SizeText}" />
+                            <GridViewColumn Header="Type" Width="85" DisplayMemberBinding="{Binding KindText}" />
+                            <GridViewColumn Header="Folder" Width="230" DisplayMemberBinding="{Binding FolderText}" />
+                            <GridViewColumn Header="On PC" Width="55">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource SuccessBrush}"
+                                                   Visibility="{Binding AlreadyTransferred, Converter={StaticResource BoolToVis}}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+
+                <!-- Nothing to show -->
+                <Border Background="White" Visibility="{Binding ShowEmptyPanel, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding EmptyMessage}" FontSize="15" Foreground="{StaticResource SubtleTextBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460" />
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>
