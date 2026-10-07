@@ -1,4 +1,5 @@
-# Android Photo Transfer for Windows
+# Android-PC-Image-Video-Transfer
+Quickly scan, select and transfer all image and or video files from your android to your pc
 
 A lightweight Windows program for copying photos, videos and other files from an Android phone to your PC over a USB cable.
 Nothing is installed on the phone.
