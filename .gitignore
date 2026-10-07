@@ -14,3 +14,4 @@ PROJECT ROOT/*.jpg
 PROJECT_REVIEW_AND_PLAN.md
 PROJECT ROOT/AndroidPhotoTransfer/test_devices.cs
 _antigravity_backup/
+release-build/
