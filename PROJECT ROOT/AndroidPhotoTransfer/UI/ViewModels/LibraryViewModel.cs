@@ -70,23 +70,31 @@ namespace AndroidPhotoTransfer.UI.ViewModels
             }
             else
             {
+                // The Files tab is a file manager for everything that isn't a photo or video
+                // (those live on the Photos & Videos tab).
                 Header = "Files";
                 ItemNoun = "files";
                 Categories = new ObservableCollection<CategoryViewModel>
                 {
                     new("All Files", "", null),
-                    new("Photos", "", m => m.FileCategory == FileCategory.Photo),
-                    new("Videos", "", m => m.FileCategory == FileCategory.Video),
                     new("Documents", "", m => m.FileCategory == FileCategory.Document),
                     new("Music & Audio", "", m => m.FileCategory == FileCategory.Audio),
-                    new("Archives (ZIP)", "", m => m.FileCategory == FileCategory.Archive),
+                    new("Archives (ZIP, RAR)", "", m => m.FileCategory == FileCategory.Archive),
                     new("Apps (APK)", "", m => m.FileCategory == FileCategory.App),
-                    new("Downloads Folder", "", m => m.Category == MediaCategory.Downloads),
                     new("Other Files", "", m => m.FileCategory == FileCategory.Other)
+                };
+                QuickAccess = new ObservableCollection<CategoryViewModel>
+                {
+                    new("Download", "", m => InFolder(m, "download", "downloads")),
+                    new("Documents", "", m => InFolder(m, "documents")),
+                    new("Music", "", m => InFolder(m, "music")),
+                    new("Recordings", "", m => InFolder(m, "recordings", "sounds", "call", "voice recorder", "recorder")),
+                    new("WhatsApp", "", m => m.Folder.Contains("whatsapp", StringComparison.OrdinalIgnoreCase)),
+                    new("Bluetooth", "", m => InFolder(m, "bluetooth"))
                 };
                 _sortMode = Settings.FilesSortMode;
                 _typeFilter = MediaTypeFilter.All;
-                _isGridView = Settings.FilesViewMode == ViewMode.Grid;
+                _isGridView = false; // a details list suits files; there are no thumbnails to show
             }
             _selectedCategory = Categories[0];
             UpdateSelectionText();
@@ -100,6 +108,17 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         public string ItemNoun { get; }
 
         public ObservableCollection<CategoryViewModel> Categories { get; }
+
+        /// <summary>Common phone folders (Files tab only). Empty ones are hidden in the sidebar.</summary>
+        public ObservableCollection<CategoryViewModel> QuickAccess { get; } = new();
+
+        private IEnumerable<CategoryViewModel> AllCategories => Categories.Concat(QuickAccess);
+
+        private static bool InFolder(MediaItem item, params string[] topFolders)
+        {
+            var first = item.Folder.Split('/', 2)[0];
+            return topFolders.Any(f => first.Equals(f, StringComparison.OrdinalIgnoreCase));
+        }
         public ObservableCollection<TreeNodeViewModel> FolderRoots { get; } = new();
         public BulkObservableCollection<MediaItemViewModel> VisibleItems { get; } = new();
         public int ItemCount => _allItems.Count;
@@ -156,11 +175,13 @@ namespace AndroidPhotoTransfer.UI.ViewModels
         // Items (fed by the main view model as the scan finds them)
         // =====================================================================================
 
-        public bool Accepts(MediaItem item) => Kind == LibraryKind.Files || item.IsMedia;
+        /// <summary>Photos/videos go to the Photos & Videos tab; everything else to the Files tab.</summary>
+        public bool Accepts(MediaItem item) => Kind == LibraryKind.Files ? !item.IsMedia : item.IsMedia;
 
         internal void AddItems(IEnumerable<MediaItem> items, HashSet<string> transferredKeys)
         {
-            var categoryCounts = new int[Categories.Count];
+            var categories = AllCategories.ToList();
+            var categoryCounts = new int[categories.Count];
             bool added = false;
             foreach (var item in items)
             {
@@ -172,15 +193,15 @@ namespace AndroidPhotoTransfer.UI.ViewModels
                 _allItems.Add(vm);
                 _itemsByPath[item.Path] = vm;
                 AddToFolderTree(item);
-                for (int i = 0; i < Categories.Count; i++)
+                for (int i = 0; i < categories.Count; i++)
                 {
-                    if (Categories[i].Matches(item)) categoryCounts[i]++;
+                    if (categories[i].Matches(item)) categoryCounts[i]++;
                 }
                 added = true;
             }
 
             if (!added) return;
-            for (int i = 0; i < Categories.Count; i++) Categories[i].Count += categoryCounts[i];
+            for (int i = 0; i < categories.Count; i++) categories[i].Count += categoryCounts[i];
             NewItemsCount = _allItems.Count(v => !v.AlreadyTransferred);
             OnPropertyChanged(nameof(ItemCount));
         }
@@ -197,7 +218,7 @@ namespace AndroidPhotoTransfer.UI.ViewModels
             SelectedCount = 0;
             SelectedTransferredCount = 0;
             NewItemsCount = 0;
-            foreach (var category in Categories) category.Count = 0;
+            foreach (var category in AllCategories) category.Count = 0;
             if (SelectedFolder != null || SelectedCategory == null)
             {
                 SelectedFolder = null;
@@ -331,10 +352,21 @@ namespace AndroidPhotoTransfer.UI.ViewModels
 
         partial void OnIsGridViewChanged(bool value)
         {
-            var mode = value ? ViewMode.Grid : ViewMode.List;
-            if (IsMediaLibrary) Settings.ViewMode = mode;
-            else Settings.FilesViewMode = mode;
+            if (!IsMediaLibrary) return; // the Files tab always uses the details list
+            Settings.ViewMode = value ? ViewMode.Grid : ViewMode.List;
             _settingsManager.Save();
+        }
+
+        /// <summary>Clicking a column header in the list sorts by it; clicking again reverses the order.</summary>
+        public void SortByColumn(string column)
+        {
+            SortMode = column switch
+            {
+                "Name" => SortMode == SortMode.NameAscending ? SortMode.NameDescending : SortMode.NameAscending,
+                "Size" => SortMode == SortMode.LargestFirst ? SortMode.SmallestFirst : SortMode.LargestFirst,
+                "Date" or "Date modified" => SortMode == SortMode.NewestFirst ? SortMode.OldestFirst : SortMode.NewestFirst,
+                _ => SortMode
+            };
         }
 
         [RelayCommand]

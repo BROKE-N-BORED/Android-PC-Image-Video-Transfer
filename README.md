@@ -9,7 +9,7 @@ A lightweight Windows program for copying photos, videos from an Android phone t
 2. Plug in your phone with a USB **data** cable, unlock it, and choose **File Transfer** if the phone asks.
 3. Pick a tab:
    - **Photos & Videos** — thumbnail grid, browse by category (Camera, Screenshots, …) or folder.
-
+   - **Files** — everything else (documents, music, recordings, ZIPs, APKs), browse by file type, quick-access folder or folder.
 4. Tick what you want — or use **Transfer All** / **Import New** — pick a folder with **Browse...** and click **TRANSFER**.
 
 - Click to tick, Shift+click to tick a range, Ctrl+A to tick everything in view, double-click to preview.

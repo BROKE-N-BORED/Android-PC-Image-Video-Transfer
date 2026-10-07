@@ -48,6 +48,41 @@
             </Setter>
         </Style>
 
+        <!-- Quick-access folders: hidden when the phone has nothing in them -->
+        <Style x:Key="QuickAccessItem" TargetType="ListBoxItem" BasedOn="{StaticResource SidebarItem}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Count}" Value="0">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- List rows: a click ticks the row (same as clicking a tile); ticked rows are highlighted -->
+        <Style x:Key="ListRow" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="2,3" />
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ListRow_PreviewMouseLeftButtonDown" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentLightBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <ControlTemplate x:Key="PlainList" TargetType="ListBox">
+            <ItemsPresenter />
+        </ControlTemplate>
+
+        <DataTemplate x:Key="CategoryTemplate" DataType="{x:Type vm:CategoryViewModel}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}"
+                           FontSize="14" Width="26" VerticalAlignment="Center" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding Count, StringFormat={}{0:N0}}" FontSize="12"
+                           Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </DataTemplate>
+
         <Style x:Key="ViewToggle" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
             <Setter Property="Padding" Value="8,5" />
             <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
@@ -64,38 +99,55 @@
 
         <!-- ============================== Sidebar ============================== -->
         <Border Grid.Column="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="PHONE" Style="{StaticResource SectionHeader}" Margin="16,12,0,6" />
+                <TextBlock Margin="16,12,0,6">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource SectionHeader}">
+                            <Setter Property="Text" Value="FILE TYPES" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMediaLibrary}" Value="True">
+                                    <Setter Property="Text" Value="PHONE" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <ListBox Grid.Row="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}"
-                         ItemContainerStyle="{StaticResource SidebarItem}" Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Categories">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:CategoryViewModel}">
-                            <DockPanel>
-                                <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}"
-                                           FontSize="14" Width="26" VerticalAlignment="Center" />
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding Count, StringFormat={}{0:N0}}" FontSize="12"
-                                           Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
-                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                            </DockPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                         ItemContainerStyle="{StaticResource SidebarItem}" ItemTemplate="{StaticResource CategoryTemplate}" Template="{StaticResource PlainList}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Categories" />
 
-                <TextBlock Grid.Row="2" Text="FOLDERS" Style="{StaticResource SectionHeader}" Margin="16,14,0,6" />
+                <!-- Files tab only: common phone folders -->
+                <TextBlock Grid.Row="2" Text="QUICK ACCESS" Style="{StaticResource SectionHeader}" Margin="16,14,0,6"
+                           Visibility="{Binding IsMediaLibrary, Converter={StaticResource InverseBoolToVis}}" />
+                <ListBox Grid.Row="3" ItemsSource="{Binding QuickAccess}" SelectedItem="{Binding SelectedCategory}"
+                         ItemContainerStyle="{StaticResource QuickAccessItem}" ItemTemplate="{StaticResource CategoryTemplate}" Template="{StaticResource PlainList}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Quick access folders"
+                         Visibility="{Binding IsMediaLibrary, Converter={StaticResource InverseBoolToVis}}" />
 
-                <TreeView Grid.Row="3" ItemsSource="{Binding FolderRoots}" Background="Transparent"
+                <TextBlock Grid.Row="4" Text="FOLDERS" Style="{StaticResource SectionHeader}" Margin="16,14,0,6" />
+
+                <TreeView Grid.Row="5" ItemsSource="{Binding FolderRoots}" Background="Transparent"
                           BorderThickness="0" Padding="4,0,4,8" SelectedItemChanged="FolderTree_SelectedItemChanged"
-                          VirtualizingPanel.IsVirtualizing="True" AutomationProperties.Name="Phone folders"
+                          AutomationProperties.Name="Phone folders"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <TreeView.Template>
+                        <ControlTemplate TargetType="TreeView">
+                            <ItemsPresenter Margin="{TemplateBinding Padding}" />
+                        </ControlTemplate>
+                    </TreeView.Template>
                     <TreeView.ItemContainerStyle>
                         <Style TargetType="TreeViewItem">
                             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -116,6 +168,7 @@
                     </TreeView.ItemTemplate>
                 </TreeView>
             </Grid>
+            </ScrollViewer>
         </Border>
 
         <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
@@ -172,7 +225,8 @@
                           SelectedValue="{Binding TypeFilter}" AutomationProperties.Name="Media type filter"
                           Visibility="{Binding IsMediaLibrary, Converter={StaticResource BoolToVis}}" />
 
-                <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="8,0,0,0">
+                <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="8,0,0,0"
+                            Visibility="{Binding IsMediaLibrary, Converter={StaticResource BoolToVis}}">
                     <Button Content="&#xF0E2;" Command="{Binding ShowGridCommand}" ToolTip="Thumbnail view" AutomationProperties.Name="Thumbnail view">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource ViewToggle}">
@@ -286,8 +340,9 @@
                 <ListView x:Name="ItemList" ItemsSource="{Binding VisibleItems}"
                           Visibility="{Binding IsGridView, Converter={StaticResource InverseBoolToVis}}"
                           BorderThickness="0,1,0,0" BorderBrush="{StaticResource DividerBrush}" SelectionMode="Extended"
+                          ItemContainerStyle="{StaticResource ListRow}"
                           VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                          MouseDoubleClick="ItemList_MouseDoubleClick" PreviewKeyDown="ItemList_PreviewKeyDown"
+                          PreviewKeyDown="ItemList_PreviewKeyDown" GridViewColumnHeader.Click="ItemList_HeaderClick"
                           AutomationProperties.Name="Items list">
                     <ListView.View>
                         <GridView>
@@ -298,7 +353,7 @@
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
-                            <GridViewColumn Header="Name" Width="300">
+                            <GridViewColumn Header="Name" Width="270">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
@@ -309,10 +364,10 @@
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
-                            <GridViewColumn Header="Date" Width="165" DisplayMemberBinding="{Binding DateText}" />
-                            <GridViewColumn Header="Size" Width="85" DisplayMemberBinding="{Binding SizeText}" />
                             <GridViewColumn Header="Type" Width="85" DisplayMemberBinding="{Binding KindText}" />
-                            <GridViewColumn Header="Folder" Width="230" DisplayMemberBinding="{Binding FolderText}" />
+                            <GridViewColumn Header="Size" Width="78" DisplayMemberBinding="{Binding SizeText}" />
+                            <GridViewColumn Header="Date modified" Width="155" DisplayMemberBinding="{Binding DateText}" />
+                            <GridViewColumn Header="Folder" Width="185" DisplayMemberBinding="{Binding FolderText}" />
                             <GridViewColumn Header="On PC" Width="55">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>

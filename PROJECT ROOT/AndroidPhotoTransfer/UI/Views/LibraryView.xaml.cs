@@ -16,6 +16,16 @@ namespace AndroidPhotoTransfer.UI.Views
 
         private LibraryViewModel? Library => DataContext as LibraryViewModel;
 
+        /// <summary>
+        /// Puts keyboard focus on the items, so Windows doesn't hand it to the folder tree
+        /// (a focused tree auto-selects its first folder and changes what's shown).
+        /// </summary>
+        public void FocusItems()
+        {
+            if (ItemGrid.IsVisible) ItemGrid.Focus();
+            else if (ItemList.IsVisible) ItemList.Focus();
+        }
+
         /// <summary>True when the item's tile currently exists in this view's visible grid.</summary>
         public bool IsTileOnScreen(MediaItemViewModel item) =>
             IsVisible && ItemGrid.IsVisible && ItemGrid.ItemContainerGenerator.ContainerFromItem(item) != null;
@@ -63,24 +73,42 @@ namespace AndroidPhotoTransfer.UI.Views
 
         // ---- List view ---------------------------------------------------------------------------
 
-        private void ItemList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        /// <summary>A click anywhere on a row ticks it (Shift+click ticks a range, double-click previews) — like the tiles.</summary>
+        private void ListRow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            var element = e.OriginalSource as DependencyObject;
-            while (element != null && element is not ListViewItem) element = VisualTreeHelper.GetParent(element);
-            if ((element as ListViewItem)?.DataContext is MediaItemViewModel item) Library?.OpenPreview(item);
+            if (sender is not ListViewItem row || row.DataContext is not MediaItemViewModel item) return;
+
+            // Let the row's own checkbox handle clicks on itself.
+            for (var element = e.OriginalSource as DependencyObject; element != null && element != row;
+                 element = VisualTreeHelper.GetParent(element))
+            {
+                if (element is CheckBox) return;
+            }
+
+            e.Handled = true;
+            row.Focus();
+            Library?.OnTileClicked(item, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), e.ClickCount);
+        }
+
+        private void ItemList_HeaderClick(object sender, RoutedEventArgs e)
+        {
+            if (e.OriginalSource is GridViewColumnHeader { Column.Header: string header }) Library?.SortByColumn(header);
         }
 
         private void ItemList_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            var selected = ItemList.SelectedItems.OfType<MediaItemViewModel>().ToList();
-            if (e.Key == Key.Space)
+            var focused = (Keyboard.FocusedElement as ListViewItem)?.DataContext as MediaItemViewModel;
+            var targets = ItemList.SelectedItems.OfType<MediaItemViewModel>().ToList();
+            if (targets.Count == 0 && focused != null) targets.Add(focused);
+
+            if (e.Key == Key.Space && targets.Count > 0)
             {
-                Library?.ToggleChecked(selected);
+                Library?.ToggleChecked(targets);
                 e.Handled = true;
             }
-            else if (e.Key == Key.Enter && selected.Count > 0)
+            else if (e.Key == Key.Enter && targets.Count > 0)
             {
-                Library?.OpenPreview(selected[0]);
+                Library?.OpenPreview(targets[0]);
                 e.Handled = true;
             }
         }

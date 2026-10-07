@@ -175,6 +175,24 @@ public class HistoryDatabaseTests
     }
 }
 
+public class LoggerTests
+{
+    [Fact]
+    public void Keeps_logging_after_the_log_file_rolls_over()
+    {
+        using var folder = new TempFolder();
+        Logger.Initialize(folder.Path);
+        var filler = new string('x', 2000);
+        for (int i = 0; i < 700; i++) Logger.Info(filler); // ~1.4 MB, forces a rollover
+        Logger.Info("AFTER-ROLLOVER");
+
+        var current = File.ReadAllText(Path.Combine(folder.Path, "app.log"));
+        Assert.Contains("AFTER-ROLLOVER", current);
+        Assert.True(File.Exists(Path.Combine(folder.Path, "app.log.1")));
+        Assert.True(new FileInfo(Path.Combine(folder.Path, "app.log")).Length < 1024 * 1024);
+    }
+}
+
 public class UtilityTests
 {
     [Theory]

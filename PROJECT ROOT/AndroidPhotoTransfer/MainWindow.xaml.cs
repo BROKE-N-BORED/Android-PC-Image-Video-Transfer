@@ -25,6 +25,8 @@ namespace AndroidPhotoTransfer
             // Thumbnails are only fetched for tiles that are really on screen in the visible tab.
             viewModel.SetThumbnailVisibilityProbe(item => MediaView.IsTileOnScreen(item) || FilesView.IsTileOnScreen(item));
 
+            ContentRendered += (_, _) => (viewModel.SelectedTabIndex == 1 ? FilesView : MediaView).FocusItems();
+
             viewModel.PreviewRequested += preview =>
             {
                 var window = new PreviewWindow(preview) { Owner = this };
