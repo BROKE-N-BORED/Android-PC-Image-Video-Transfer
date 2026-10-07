@@ -24,10 +24,8 @@ namespace AndroidPhotoTransfer.Core.Wpd
                 {
                     Logger.Warn("Skipped a portable device that could not be read", ex);
                 }
-                finally
-                {
-                    try { device.Dispose(); } catch { /* not connected; nothing to release */ }
-                }
+                // Never dispose these: the library can hand back the same object the app is using for the
+                // connected phone, and disposing it kills the live connection ("phone disconnected").
             }
             return phones;
         }
@@ -92,7 +90,6 @@ namespace AndroidPhotoTransfer.Core.Wpd
                 foreach (var candidate in MediaDevice.GetDevices())
                 {
                     if (match == null && candidate.DeviceId == deviceId) match = candidate;
-                    else candidate.Dispose();
                 }
                 if (match == null) throw new DeviceDisconnectedException();
 
