@@ -8,12 +8,6 @@ namespace AndroidPhotoTransfer.Core.Media
         /// <summary>Folders scanned first so the photos people care about appear quickly.</summary>
         private static readonly string[] PriorityFolders = { "dcim", "pictures", "download", "movies", "documents" };
 
-        /// <summary>App-private data: huge, not user media, and blocked on modern Android anyway.</summary>
-        private static readonly HashSet<string> SkippedFolders = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "android/data", "android/obb"
-        };
-
         public async Task ScanAsync(IWpdAdapter device, IReadOnlyList<StorageRoot> roots,
             Action<IReadOnlyList<MediaItem>> onBatch, CancellationToken ct)
         {
@@ -72,7 +66,7 @@ namespace AndroidPhotoTransfer.Core.Media
         }
 
         private static bool ShouldSkipFolder(DeviceEntry folder, string relative) =>
-            folder.Name.StartsWith('.') || folder.IsHidden || SkippedFolders.Contains(relative);
+            folder.Name.StartsWith('.') || folder.IsHidden;
 
         private static int Priority(string rootFolder)
         {

@@ -12,7 +12,7 @@ namespace AndroidPhotoTransfer.Tests;
 public class MediaScannerTests
 {
     [Fact]
-    public async Task Finds_photos_and_videos_and_skips_app_data_hidden_folders_and_other_files()
+    public async Task Finds_photos_and_videos_and_android_data_and_skips_hidden_folders()
     {
         var phone = new FakePhone();
         phone.AddFile("DCIM/Camera/IMG_1.jpg", TestData.Bytes(10));
@@ -29,8 +29,8 @@ public class MediaScannerTests
         await new MediaScanner().ScanAsync(phone, roots, batch => found.AddRange(batch), default);
 
         var names = found.Select(f => f.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-        // Every visible file is found (the Files tab needs them); app data and hidden folders are skipped.
-        Assert.Equal(new[] { "IMG-WA0001.jpg", "IMG_1.jpg", "Screenshot_1.png", "VID_1.MP4", "meme.webp", "report.pdf" }, names);
+        // Every visible file is found (the Files tab needs them), including Android data folders; hidden folders are skipped.
+        Assert.Equal(new[] { "IMG-WA0001.jpg", "IMG_1.jpg", "Screenshot_1.png", "VID_1.MP4", "meme.webp", "report.pdf", "x.jpg" }, names);
         Assert.Equal(MediaKind.File, found.Single(f => f.Name == "report.pdf").Kind);
         Assert.Equal(FileCategory.Document, found.Single(f => f.Name == "report.pdf").FileCategory);
         Assert.All(found, f => Assert.NotNull(f.PersistentId));
@@ -41,6 +41,7 @@ public class MediaScannerTests
         Assert.Equal(MediaCategory.Downloads, found.Single(f => f.Name == "meme.webp").Category);
         Assert.Equal(MediaCategory.Other, found.Single(f => f.Name == "IMG-WA0001.jpg").Category);
         Assert.Equal("DCIM/Camera", found.Single(f => f.Name == "IMG_1.jpg").Folder);
+        Assert.Equal("Android/data/com.app/cache", found.Single(f => f.Name == "x.jpg").Folder);
     }
 }
 
