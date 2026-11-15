@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Android Photo Transfer: phone to PC</title>
+  <!-- Rounded teal tile -->
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="#14707f"/>
+  <!-- Phone (left) -->
+  <rect x="76" y="116" width="132" height="280" rx="26" fill="none" stroke="#ffffff" stroke-width="18"/>
+  <line x1="118" y1="150" x2="166" y2="150" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+  <!-- Tiny photo glyph on the phone screen -->
+  <rect x="98" y="182" width="88" height="76" rx="10" fill="none" stroke="#ffd166" stroke-width="10"/>
+  <circle cx="122" cy="206" r="10" fill="#ffd166"/>
+  <polyline points="102,250 132,222 152,240 168,226 182,242" fill="none" stroke="#ffd166" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="142" cy="358" r="12" fill="#ffffff"/>
+  <!-- Arrow (phone to PC) -->
+  <line x1="232" y1="256" x2="308" y2="256" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+  <polyline points="284,226 318,256 284,286" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Monitor (right) -->
+  <rect x="330" y="150" width="128" height="188" rx="16" fill="none" stroke="#ffffff" stroke-width="18"/>
+  <line x1="394" y1="338" x2="394" y2="374" stroke="#ffffff" stroke-width="16" stroke-linecap="round"/>
+  <line x1="356" y1="378" x2="432" y2="378" stroke="#ffffff" stroke-width="16" stroke-linecap="round"/>
+  <!-- Tiny photo glyph on the monitor -->
+  <circle cx="370" cy="206" r="11" fill="#ffd166"/>
+  <polyline points="346,318 380,276 404,300 420,284 442,306" fill="none" stroke="#ffd166" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

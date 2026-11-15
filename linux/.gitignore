@@ -1,0 +1,26 @@
+# Secrets (IMMUTABLE rule: sensitive information and APIs are NEVER in
+# code; they live in gitignored files only).
+.env
+.env.*
+*.env
+providers.json
+*credentials*
+*secret*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+*.kdbx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Build / release
+dist/
+*.zip
+*.partial

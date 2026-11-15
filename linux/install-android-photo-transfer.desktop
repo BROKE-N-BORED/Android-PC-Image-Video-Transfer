@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Install Android Photo Transfer
+Comment=Install Android Photo Transfer on this PC
+Exec=python3 -c "import os,runpy,sys; p=sys.argv[1] if len(sys.argv)>1 else ''; d=os.path.dirname(os.path.abspath(p)) if p else os.getcwd(); sys.path.insert(0,d); runpy.run_path(os.path.join(d,'install_gui.py'),run_name='__main__')" %k
+Icon=system-software-install
+Terminal=false
+Categories=Utility;
+Keywords=phone;photo;transfer;android;mtp;install;
+StartupWMClass=android-photo-transfer

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Android Photo Transfer
+Comment=Copy photos and videos from an Android phone to this PC
+Exec=python3 -c "import os,runpy,sys; p=sys.argv[1] if len(sys.argv)>1 else ''; d=os.path.dirname(os.path.abspath(p)) if p else os.getcwd(); sys.path.insert(0,d); runpy.run_module('android_photo_transfer',run_name='__main__')" %k
+Icon=android-photo-transfer
+Terminal=false
+Categories=Utility;
+Keywords=phone;photo;transfer;android;mtp;
+StartupWMClass=android-photo-transfer

@@ -21,3 +21,10 @@ A lightweight Windows program for copying photos, videos from an Android phone t
 - If the phone disconnects mid-transfer, nothing half-copied is left behind; the program reconnects and **Resume** finishes the rest.
 
 Requires Windows 10/11 and the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+
+## Linux version
+
+A native Linux port lives in `linux/` (Python + Qt, talks to the phone
+over USB with libmtp, no Wine needed). See
+[linux/README.md](linux/README.md) to install and run it.
+The Windows program above is unchanged.
