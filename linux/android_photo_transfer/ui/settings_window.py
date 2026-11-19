@@ -96,6 +96,18 @@ class SettingsWindow(QDialog):
         cache_row.addWidget(self.cache_combo, 0, 1)
         layout.addLayout(cache_row)
 
+        layout.addWidget(self._header("UPDATES"))
+        self.updates_check = QCheckBox("Check for updates on startup")
+        self.updates_check.setChecked(settings.check_updates_on_startup)
+        layout.addWidget(self.updates_check)
+        updates_note = QLabel(
+            "When this is on, the app quietly checks for a newer version "
+            "each time it starts."
+        )
+        updates_note.setWordWrap(True)
+        updates_note.setStyleSheet(f"color: {SUBTLE_TEXT}; font-size: 12px;")
+        layout.addWidget(updates_note)
+
         layout.addWidget(self._header("APPLICATION"))
         app_row = QHBoxLayout()
         clear_cache = QPushButton("Clear Thumbnail Cache")
@@ -155,6 +167,7 @@ class SettingsWindow(QDialog):
         settings.organize_by_folder = self.organize_check.isChecked()
         settings.thumbnails_enabled = self.thumbnails_check.isChecked()
         settings.thumbnail_cache_mb = int(self.cache_combo.currentData())
+        settings.check_updates_on_startup = self.updates_check.isChecked()
         self._manager.save()
         self._on_saved()
         self.accept()

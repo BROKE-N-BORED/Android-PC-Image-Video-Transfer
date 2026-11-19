@@ -133,6 +133,7 @@ visible UI text). AGENTS.md Qt/zip/installer lessons apply.
   `skip_existing: bool = True`, `open_folder_after_transfer: bool = False`,
   `organize_by_folder: bool = False`, `thumbnails_enabled: bool = True`,
   `thumbnail_cache_mb: int = 64` (clamp 16..1024),
+  `check_updates_on_startup: bool = True` (v0.1.1 auto-updater),
   `window_geometry: dict | None = None` (`{"x","y","w","h"}`).
 - `SettingsManager(path: str | None = None)`: `.current: Settings`,
   `.save() -> None` (atomic tmp + os.replace), loads with defaults on
@@ -152,6 +153,90 @@ visible UI text). AGENTS.md Qt/zip/installer lessons apply.
 - `setup_logging() -> logging.Logger`: file logs under the XDG logs dir,
   RotatingFileHandler (1 MB x 3), plus `log_exception` helper. Name the
   logger "android_photo_transfer".
+
+## core/updates.py + ui/updates_ui.py — auto-updater (v0.1.1)
+Qt-free core (`core/updates.py`, stdlib urllib only) so the UI can drive it
+from a worker thread and the tests can run it without Qt. One unauthenticated
+GET to the public GitHub releases endpoint; no token, no identifying
+information sent. Repo: `BROKE-N-BORED/Android-PC-Image-Video-Transfer`.
+API base `https://api.github.com`, overridable for tests/E2E via env
+`APT_UPDATE_API_BASE`.
+- `check_for_update(current_version, base=None, urlopen=None) -> dict`,
+  never raises for a network or parsing problem:
+  `{"state": "newer", "version", "tag", "zip_url", "sidecar_url",
+  "page_url", "latest"}` / `{"state": "current", "latest": <newest Linux
+  release or None>}` / `{"state": "unknown", "latest": None, "reason":
+  <plain words>}`.
+- Release selection is by ASSET NAME, never by tag: the repo hosts both
+  Windows releases (v1.0.x) and Linux releases (v0.1.x), and a release only
+  counts when it is not a draft, not a prerelease, and carries BOTH
+  `android-photo-transfer-linux-<ver>.zip` AND its `.zip.sha256` sidecar for
+  the same version. The version is parsed from the asset name; Windows
+  releases are filtered out because they carry no Linux zip. A release
+  without the sidecar is never offered (no blind downloads, ever).
+  `newest_linux_release(releases)` / `find_linux_update(releases,
+  current_version)` implement the selection.
+- `download_update(info, dest_dir, progress_cb=None, cancel=None,
+  urlopen=None) -> {"zip_path", "version", "sha256"}`: streams the zip
+  (`progress_cb(downloaded, total)` per chunk, `cancel()` checked between
+  chunks), then SHA-256-checks it against the sidecar (`parse_sidecar`
+  reads a standard sha256sum line, `"<hex>  <filename>"`). A mismatch, a
+  missing or unreadable sidecar, or a missing version raises `UpdateError`
+  (plain words) and the download is thrown away; a cancelled download
+  raises `UpdateCancelled` and its partial file is removed. Nothing
+  unverified ever reaches the apply step.
+- `apply_update(zip_path, version, install_dir=None, python=None)`:
+  atomic swap. (1) Extract to a temp dir beside the install dir; the
+  extracted package's `__version__` (read by regex, never imported) must
+  match the release version. (2) Build the new tree in a staging dir
+  beside the install dir (package + `icons/` + `README.md`), plus the old
+  launcher copied over (its paths stay right because the install dir path
+  does not change; a fresh one is written from the installer template if
+  the copy fails). (3) Move the keep-list into staging: `venv`,
+  `history.db`, `history.db-wal`, `history.db-shm`, `logs` (the same list
+  `install_lib.copy_tree` preserves). (4) Swap: rename the install dir to
+  a backup, rename staging into its place, delete the backup. (5) Verify
+  the new tree imports (`<python> -c "import android_photo_transfer"`,
+  the tree's venv python when it exists); on failure roll the backup back
+  (keep-list moved back first). Any failure before the swap leaves the old
+  install untouched and moves the keep-list back. Temp dirs are
+  `.apt-update-extract-` / `.apt-update-new-` / `.apt-update-backup-`
+  beside the install dir and are removed on success.
+- `is_installed(pkg_dir=None) -> bool`: true only when the package's parent
+  dir holds the launcher file `android-photo-transfer`. A source checkout
+  has no launcher there, so it is never mistaken for an install.
+  `package_dir()` / `find_install_dir()` / `launcher_path()`.
+- UI (`ui/updates_ui.py`, workers follow the viewmodels.py shape: QObject
+  on a QThread, results back over signals): `UpdateCheckWorker`
+  (`finished` dict), `UpdateApplyWorker` (`progress_changed`,
+  `phase_changed`, `finished` version, `failed`, `cancelled`; the cancel
+  event is checked between download chunks, the apply step runs to
+  completion), `UpdateDialog` (modal; installed: Update / Later, with
+  `update_requested` true only when Update was tapped; source run: Open
+  the release page / Close; body: "Android Photo Transfer {latest} is on
+  GitHub. You have {current}."), `UpdateProgressDialog` (indeterminate
+  bar, bytes label with real numbers, Cancel; disabled once the Installing
+  phase starts).
+- UI behavior (`ui/main_window.py`, `main.py`): the Help menu has "Check
+  for Updates..." (manual check) and the checkable "Check for updates on
+  startup" (saved immediately on toggle, checkmark refreshed on
+  `aboutToShow`). `main()` calls `MainWindow.start_silent_update_check()`
+  once per launch, after `window.show()`; it is gated on
+  `Settings.check_updates_on_startup` (default True). Silent check: an
+  update found shows the update dialog; up to date shows nothing; failure
+  shows a status-bar line at most, never a modal. Manual check: up to date
+  and failure both show a dialog. Only one check runs at a time (silent or
+  manual); a second manual check is refused with "Already checking for
+  updates." The pull flow downloads to a temp dir
+  (`android-photo-transfer-update-*`, removed afterwards), applies, then
+  asks "Restart now to complete the update?": Yes closes the window (the
+  close guard still gets its say; a vetoed close aborts the restart),
+  relaunches via the installed launcher detached, and quits; No closes the
+  prompt and the update completes on next launch. `ui/settings_window.py`
+  has an UPDATES section with the "Check for updates on startup" checkbox.
+- `build_zip.py` writes the `.sha256` sidecar next to the zip (standard
+  sha256sum line). A release must publish the zip and its sidecar together
+  or the updater will never offer it.
 
 ## ui/ (PySide6)
 - Main window 1220x780, minimum 960x580. Two tabs: "Photos and Videos"
@@ -177,13 +262,19 @@ visible UI text). AGENTS.md Qt/zip/installer lessons apply.
 - Thumbnails: device thumbnail first; photo full-decode fallback for files
   <= 30 MB; LRU memory cache, default 64 MB (clamp 16..1024).
 - Settings window: destination folder, skip-existing, open-folder-after,
-  organize-by-folder, thumbnails on/off, cache size, Open Logs button.
+  organize-by-folder, thumbnails on/off, cache size, UPDATES section
+  ("Check for updates on startup" checkbox, v0.1.1), Open Logs button.
+- Menu bar: a Help menu with "Check for Updates..." and the checkable
+  "Check for updates on startup" (v0.1.1 auto-updater; see the
+  core/updates.py section above).
 - Close-during-transfer guard (confirm dialog). Window placement persisted
   + validated against the screen (fall back to centered).
 - All device/transfer work on QThreads; UI updates via signals only.
 - `main.py`: QApplication setup, wiring (settings, history with graceful
   degradation, device manager, thumbnail cache, view models), global
-  exception handler with a friendly dialog, shutdown (dispose + save).
+  exception handler with a friendly dialog, one silent update check per
+  launch after the window shows (`start_silent_update_check`, v0.1.1),
+  shutdown (dispose + save).
 - NO bare `&` in any visible label. NO em-dashes in visible UI text.
   Select nothing by default. Cheap motion only.
 

@@ -96,6 +96,9 @@ def main(argv=None) -> int:
     window.show()
     log.info("Main window shown")
     view_model.start()
+    # One quiet update check per launch, after the window is up (only when
+    # the setting is on; see MainWindow.start_silent_update_check).
+    window.start_silent_update_check()
 
     try:
         return app.exec()

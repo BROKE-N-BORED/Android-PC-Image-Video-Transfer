@@ -60,6 +60,7 @@ class Settings:
     organize_by_folder: bool = False
     thumbnails_enabled: bool = True
     thumbnail_cache_mb: int = 64
+    check_updates_on_startup: bool = True
     window_geometry: dict | None = None  # {"x", "y", "w", "h"}
 
     def __post_init__(self) -> None:

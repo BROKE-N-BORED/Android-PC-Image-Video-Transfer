@@ -10,6 +10,7 @@ from __future__ import annotations
 import errno
 
 from ..device.types import DeviceDisconnectedError, DeviceError
+from .updates import UpdateCancelled, UpdateError
 
 PHONESTOPPED = (
     "The phone stopped responding. Unlock your phone and make sure USB "
@@ -81,6 +82,9 @@ def describe(exc: Exception) -> str:
             "Not enough free space on the PC. Needed: "
             f"{format_bytes(exc.required)}, available: {format_bytes(exc.available)}."
         )
+    if isinstance(exc, (UpdateError, UpdateCancelled)):
+        # Update errors are already plain language; pass them through.
+        return str(exc)
     if isinstance(exc, DeviceDisconnectedError):
         return (
             "The phone was disconnected. Reconnect it and make sure USB "

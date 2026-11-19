@@ -1,4 +1,5 @@
-"""Qt GUI smoke tests + thumbnail-cache LRU tests. XVFB ONLY.
+"""Qt GUI smoke tests + thumbnail-cache LRU tests + updater UI tests.
+XVFB ONLY.
 
 Run: LD_LIBRARY_PATH=~/workspace/qt-libs/root/usr/lib/x86_64-linux-gnu
      TMPDIR=/tmp xvfb-run -a ~/workspace/forge-v2-testenv/bin/python
@@ -21,11 +22,22 @@ The main window is built with the same wiring as main.py (temp settings
 engine, MainViewModel), so these tests exercise the real startup path.
 Tab titles may gain counts after a scan ("Photos and Videos  (3)"), so
 the tab test matches on the title prefix.
+
+The updater tests (UpdateGuiTests) monkeypatch
+android_photo_transfer.core.updates.check_for_update with canned
+results, so no network is ever touched. Modal dialogs are driven by a
+watchdog QTimer (_DialogWatchdog): timers keep firing inside a modal
+exec() loop, so the watchdog can inspect and dismiss a dialog the GUI
+thread is blocked on. Never call a modal-blocking function from inside
+the watchdog callback -- a QTimer does not re-fire while its own timeout
+handler is on the stack. Fire blocking calls via QTimer.singleShot from
+the main loop instead (see test_manual_check_while_running_is_refused).
 """
 from __future__ import annotations
 
 import os
 import sys
+import time
 import unittest
 
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -35,9 +47,16 @@ sys.path.insert(0, _TESTS_DIR)  # tests/ (fakes.py)
 from fakes import TempFolder, TestData, try_import  # noqa: E402
 
 try:
-    from PySide6.QtCore import Qt  # noqa: F401
+    from PySide6.QtCore import Qt, QTimer  # noqa: F401
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QListWidget, QTabWidget
+    from PySide6.QtWidgets import (
+        QApplication,
+        QDialog,
+        QListWidget,
+        QMessageBox,
+        QPushButton,
+        QTabWidget,
+    )
     _QT_OK = True
 except Exception:
     _QT_OK = False
@@ -113,7 +132,79 @@ def _visible_texts(widget):
     return texts
 
 
-class GuiSmokeTests(unittest.TestCase):
+# --- updater-test helpers -------------------------------------------------
+# Canned check_for_update results. The version 9.9.9 is deliberately
+# far above any real release, so "newer" is unambiguous.
+
+FAKE_NEWER = {
+    "state": "newer", "version": "9.9.9", "tag": "v9.9.9",
+    "zip_url": "https://example.invalid/x.zip",
+    "sidecar_url": "https://example.invalid/x.zip.sha256",
+    "page_url": "https://example.invalid/release",
+    "latest": "9.9.9",
+}
+FAKE_CURRENT = {"state": "current", "latest": "0.1.1"}
+FAKE_UNKNOWN = {"state": "unknown", "latest": None,
+                "reason": "Could not reach GitHub: test failure"}
+
+
+def _visible_dialogs():
+    """Visible top-level dialogs (QMessageBox and UpdateDialog alike)."""
+    return [w for w in QApplication.topLevelWidgets()
+            if isinstance(w, QDialog) and w.isVisible()]
+
+
+def _click_button(dialog, text):
+    """Click the visible button with this text; False when there is none."""
+    for button in dialog.findChildren(QPushButton):
+        if button.text() == text and button.isVisible():
+            QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+            return True
+    return False
+
+
+def _dialog_texts(dialog):
+    from PySide6.QtWidgets import QLabel
+
+    return [label.text() for label in dialog.findChildren(QLabel)]
+
+
+class _DialogWatchdog:
+    """Polls for visible modal dialogs while the GUI thread sits inside
+    a modal exec() loop, and hands each new dialog to `handler` once.
+
+    The handler records what it saw and dismisses the dialog; it must
+    NOT assert (an exception inside a Qt slot is swallowed, not
+    reported) and must NOT call anything modal itself -- a QTimer does
+    not re-fire while its own timeout handler is on the stack. The test
+    asserts on the recorded data after the wait loop returns.
+    """
+
+    def __init__(self, handler):
+        self._timer = QTimer()
+        self._timer.setInterval(100)
+        self._timer.timeout.connect(self._poll)
+        self._handler = handler
+        self._seen_ids: set[int] = set()
+
+    def start(self):
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+
+    def _poll(self):
+        for dialog in _visible_dialogs():
+            if id(dialog) in self._seen_ids:
+                continue
+            self._seen_ids.add(id(dialog))
+            self._handler(dialog)
+
+
+class _MainWindowTestCase(unittest.TestCase):
+    """Shared harness: Qt + MainWindow lookup, temp settings/history,
+    and the real main.py window wiring. The smoke tests and the updater
+    tests both build on it; it holds no tests of its own."""
 
     @classmethod
     def setUpClass(cls):
@@ -213,6 +304,11 @@ class GuiSmokeTests(unittest.TestCase):
             with open(os.path.join(root, "DCIM", "Camera", name), "wb") as fh:
                 fh.write(TestData.bytes(1000, len(name)))
         return root
+
+
+class GuiSmokeTests(_MainWindowTestCase):
+    """Window layout, visible-text rules, default selection, and the
+    demo-folder scan."""
 
     def test_window_opens_with_both_tabs(self):
         window, _vm = self._make_window()
@@ -325,6 +421,239 @@ class GuiSmokeTests(unittest.TestCase):
             "the media grid stayed empty after ~15 s (APT_DEMO_FOLDER=%s)." % root)
         self.assertEqual(3, grid.model().rowCount(),
                          "the grid should show the 3 demo-folder files")
+
+
+class UpdateGuiTests(_MainWindowTestCase):
+    """Updater UI (v0.1.1): silent + manual checks, the update dialog,
+    and the Help menu startup toggle.
+
+    updates.check_for_update is monkeypatched with canned results, so
+    no network is ever touched; every patch is restored in tearDown
+    via addCleanup. Modal dialogs are driven by _DialogWatchdog (see
+    the module docstring for the trap note).
+    """
+
+    def _patch_check(self, fake):
+        """Replace updates.check_for_update with a canned result (a dict)
+        or a callable; restored automatically after the test."""
+        from unittest import mock
+
+        from android_photo_transfer.core import updates
+
+        if callable(fake):
+            new = fake
+        else:
+            new = lambda _version, _fake=fake: dict(_fake)  # noqa: E731
+        patcher = mock.patch.object(updates, "check_for_update", new)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _help_action(self, window, text):
+        from PySide6.QtWidgets import QMenu
+
+        menus = [m for m in window.menuBar().findChildren(QMenu)]
+        help_menu = next((m for m in menus if m.title() == "Help"), None)
+        self.assertIsNotNone(help_menu, "no Help menu in the menu bar")
+        for action in help_menu.actions():
+            if action.text() == text:
+                return action
+        self.fail(f"no Help menu action {text!r}: "
+                  f"{[a.text() for a in help_menu.actions()]}")
+
+    def _wait_until(self, condition, timeout_s=15):
+        """Pump the event loop until condition() holds or the timeout
+        passes. Returns True when the condition held in time."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if condition():
+                return True
+            QTest.qWait(100)
+        return condition()
+
+    def _wait_for_check_done(self, window, timeout_s=15):
+        """The check thread is cleared in _on_update_check_finished, so
+        a None thread means the check's result has been handled."""
+        return self._wait_until(
+            lambda: window._update_check_thread is None, timeout_s)
+
+    def _show_window(self):
+        window, _vm = self._make_window()
+        window.show()
+        QTest.qWait(300)
+        return window
+
+    def test_silent_check_newer_shows_update_dialog(self):
+        from android_photo_transfer import __version__ as current
+        from android_photo_transfer.ui.updates_ui import UpdateDialog
+
+        window = self._show_window()
+        self._patch_check(FAKE_NEWER)
+        found: dict = {}
+
+        def handle(dialog):
+            if isinstance(dialog, UpdateDialog):
+                found["texts"] = _dialog_texts(dialog)
+                found["buttons"] = [b.text()
+                                    for b in dialog.findChildren(QPushButton)]
+                found["title"] = dialog.windowTitle()
+                found["closed"] = _click_button(dialog, "Close")
+
+        watchdog = _DialogWatchdog(handle)
+        watchdog.start()
+        self.addCleanup(watchdog.stop)
+        window.start_silent_update_check()
+        self.assertTrue(
+            self._wait_until(lambda: "texts" in found),
+            "no update dialog appeared within 15 s")
+        watchdog.stop()
+        self.assertTrue(found.get("closed"), "the dialog had no Close button")
+        self.assertEqual("Update available", found["title"])
+        body = " ".join(found["texts"])
+        self.assertIn("Android Photo Transfer 9.9.9 is on GitHub", body)
+        self.assertIn(f"You have {current}", body)
+        # Source run: no download/apply, just the release page.
+        self.assertIn("Open the release page", found["buttons"])
+        self.assertIn("Close", found["buttons"])
+
+    def test_silent_check_up_to_date_shows_nothing(self):
+        window = self._show_window()
+        self._patch_check(FAKE_CURRENT)
+        before = window._status_label.text()
+        window.start_silent_update_check()
+        self.assertTrue(self._wait_for_check_done(window),
+                        "the silent check never finished")
+        QTest.qWait(500)  # give any stray modal time to appear
+        self.assertEqual([], _visible_dialogs(),
+                         "the silent up-to-date check showed a dialog")
+        self.assertEqual(before, window._status_label.text(),
+                         "the silent up-to-date check changed the status bar")
+
+    def test_silent_check_failure_shows_no_modal(self):
+        window = self._show_window()
+        self._patch_check(FAKE_UNKNOWN)
+        window.start_silent_update_check()
+        self.assertTrue(self._wait_for_check_done(window),
+                        "the silent check never finished")
+        QTest.qWait(500)  # give any stray modal time to appear
+        self.assertEqual([], _visible_dialogs(),
+                         "the silent failed check showed a modal")
+        # A status-bar line at most, never a modal.
+        self.assertEqual("Could not check for updates.",
+                         window._status_label.text())
+
+    def test_manual_check_up_to_date_shows_info_dialog(self):
+        window = self._show_window()
+        self._patch_check(FAKE_CURRENT)
+        found: dict = {}
+
+        def handle(dialog):
+            if isinstance(dialog, QMessageBox):
+                found["text"] = dialog.text()
+                found["title"] = dialog.windowTitle()
+                found["icon"] = dialog.icon()
+                found["closed"] = _click_button(dialog, "OK")
+
+        watchdog = _DialogWatchdog(handle)
+        watchdog.start()
+        self.addCleanup(watchdog.stop)
+        self._help_action(window, "Check for Updates...").trigger()
+        self.assertTrue(
+            self._wait_until(lambda: "text" in found),
+            "no up-to-date dialog appeared within 15 s")
+        watchdog.stop()
+        self.assertTrue(found.get("closed"), "the dialog had no OK button")
+        self.assertEqual("Check for Updates", found["title"])
+        self.assertEqual(QMessageBox.Icon.Information, found["icon"])
+        self.assertIn("You have the latest version.", found["text"])
+        self.assertIn("0.1.1", found["text"])
+
+    def test_manual_check_failure_shows_warning_with_reason(self):
+        window = self._show_window()
+        self._patch_check(FAKE_UNKNOWN)
+        found: dict = {}
+
+        def handle(dialog):
+            if isinstance(dialog, QMessageBox):
+                found["text"] = dialog.text()
+                found["icon"] = dialog.icon()
+                found["closed"] = _click_button(dialog, "OK")
+
+        watchdog = _DialogWatchdog(handle)
+        watchdog.start()
+        self.addCleanup(watchdog.stop)
+        self._help_action(window, "Check for Updates...").trigger()
+        self.assertTrue(
+            self._wait_until(lambda: "text" in found),
+            "no failure dialog appeared within 15 s")
+        watchdog.stop()
+        self.assertTrue(found.get("closed"), "the dialog had no OK button")
+        self.assertEqual(QMessageBox.Icon.Warning, found["icon"])
+        self.assertIn("Could not check for updates.", found["text"])
+        self.assertIn("Could not reach GitHub: test failure", found["text"])
+
+    def test_manual_check_while_running_is_refused(self):
+        # A slow first check, then a second manual check while it is
+        # still running. The second call must NOT run from inside the
+        # watchdog: it blocks in a modal exec(), and a QTimer does not
+        # re-fire while its own timeout handler is on the stack, so the
+        # watchdog would never get to dismiss the refusal dialog. A
+        # singleShot fires from the main loop instead, watchdog free.
+        window = self._show_window()
+        calls = {"n": 0}
+
+        def slow(_version):
+            calls["n"] += 1
+            time.sleep(2)
+            return dict(FAKE_CURRENT)
+
+        self._patch_check(slow)
+        texts: list = []
+
+        def handle(dialog):
+            if isinstance(dialog, QMessageBox):
+                texts.append(dialog.text())
+                if not _click_button(dialog, "OK"):
+                    dialog.accept()
+
+        watchdog = _DialogWatchdog(handle)
+        watchdog.start()
+        self.addCleanup(watchdog.stop)
+        self._help_action(window, "Check for Updates...").trigger()
+        QTimer.singleShot(200, window._on_manual_update_check)
+        self.assertTrue(
+            self._wait_until(
+                lambda: "Already checking for updates." in texts),
+            "no Already-checking refusal appeared within 15 s")
+        self.assertTrue(
+            self._wait_until(lambda: len(texts) >= 2),
+            "the slow first check never reported its result")
+        watchdog.stop()
+        self.assertEqual(1, calls["n"],
+                         "the second check ran a second update check")
+        self.assertIn("Already checking for updates.", texts[0])
+        self.assertTrue(
+            any("You have the latest version." in t for t in texts),
+            f"the slow check's result was not reported: {texts}")
+
+    def test_help_menu_startup_action_toggles_and_persists(self):
+        from android_photo_transfer.core.settings import SettingsManager
+
+        window, _vm = self._make_window()
+        action = self._help_action(window, "Check for updates on startup")
+        self.assertTrue(action.isCheckable())
+        self.assertTrue(action.isChecked(),
+                        "the startup check is on by default")
+        settings_manager = window._settings_manager
+        action.trigger()  # on -> off
+        self.assertFalse(settings_manager.current.check_updates_on_startup)
+        reloaded = SettingsManager(settings_manager.path)
+        self.assertFalse(reloaded.current.check_updates_on_startup,
+                         "the toggled setting was not saved to disk")
+        action.trigger()  # off -> on
+        self.assertTrue(settings_manager.current.check_updates_on_startup)
+        reloaded = SettingsManager(settings_manager.path)
+        self.assertTrue(reloaded.current.check_updates_on_startup,
+                        "the toggled setting was not saved to disk")
 
 
 class ThumbnailCacheTests(unittest.TestCase):

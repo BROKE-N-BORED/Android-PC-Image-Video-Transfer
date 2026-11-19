@@ -63,6 +63,23 @@ That folder shows up as "Demo Phone (folder)".
 - Delete from Phone only deletes items already on the PC by default;
   deleting anything not yet copied needs a second confirmation.
 
+## Updates
+
+The app checks for a new version once when it starts (turn it off in
+Settings, or in the Help menu: "Check for updates on startup"). You can
+also check any time with Help > Check for Updates.
+
+When a new version is out, the app asks whether to update. Choosing
+Update downloads the new release, checks it against its checksum, and
+installs it; your photos, settings and transfer history stay where they
+are. Afterwards it asks whether to restart now: say yes and the app
+restarts into the new version, say no and the update takes effect the
+next time you open the app.
+
+If you run the app from source instead of installing it, it cannot
+update itself: the update dialog opens the release page so you can get
+the new version there.
+
 ## Build from source
 
 ```sh
@@ -76,11 +93,14 @@ Needs PySide6: `sudo apt install python3-pyside6` (Mint).
 Build the release zip:
 
 ```sh
-python3 build_zip.py --version 0.1.0
+python3 build_zip.py --version 0.1.1
 ```
 
 The zip lands in `dist/` and self-checks its file modes (scripts stay
-executable when extracted with a GUI archiver).
+executable when extracted with a GUI archiver). `build_zip.py` also
+writes a `.sha256` sidecar next to the zip; a release must publish the
+zip and its sidecar together, or the in-app updater will never offer it
+(it refuses any release without a checksum file).
 
 ## Tests
 

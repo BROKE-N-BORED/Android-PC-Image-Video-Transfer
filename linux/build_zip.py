@@ -2,7 +2,7 @@
 """Build the Android Photo Transfer Linux release zip.
 
 Usage (from the port/ directory):
-    python3 build_zip.py [--version 0.1.0] [--out dist/]
+    python3 build_zip.py [--version 0.1.1] [--out dist/]
 
 The zip holds the app + installer (no tests, no dev files):
     android_photo_transfer/   the app package
@@ -25,6 +25,7 @@ No network calls. Works from a clean copy of the tree.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import stat
 import sys
@@ -123,9 +124,26 @@ def verify_zip(zip_path: str, entries: list[tuple[str, str, int]]) -> list[str]:
     return problems
 
 
+def write_sidecar(zip_path: str) -> str:
+    """Write the .sha256 sidecar next to the zip (standard sha256sum line:
+    "<hex>  <zip basename>"). The updater refuses a release without one,
+    so the two are always published together."""
+    digest = hashlib.sha256()
+    with open(zip_path, "rb") as fh:
+        while True:
+            chunk = fh.read(65536)
+            if not chunk:
+                break
+            digest.update(chunk)
+    sidecar_path = zip_path + ".sha256"
+    with open(sidecar_path, "w", encoding="utf-8") as fh:
+        fh.write(f"{digest.hexdigest()}  {os.path.basename(zip_path)}\n")
+    return sidecar_path
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Build the release zip.")
-    parser.add_argument("--version", default="0.1.0",
+    parser.add_argument("--version", default="0.1.1",
                         help="release version stamped into the zip name")
     parser.add_argument("--out", default=os.path.join(PORT_DIR, "dist"),
                         help="output directory (default port/dist/)")
@@ -147,6 +165,8 @@ def main(argv=None) -> int:
     scripts = [a for a, _p, m in entries if m == SCRIPT_MODE]
     print(f"  self-check OK: all {len(entries)} stored modes correct "
           f"(executable: {', '.join(scripts) or 'none'})")
+    sidecar_path = write_sidecar(zip_path)
+    print(f"Wrote {sidecar_path}")
     return 0
 
 

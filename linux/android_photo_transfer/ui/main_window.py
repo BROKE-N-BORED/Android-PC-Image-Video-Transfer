@@ -7,10 +7,15 @@ the safety fix from the contract, not the upstream single-confirm dialog.
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
+import tempfile
+import threading
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QThread, QTimer, Slot
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -29,6 +34,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
+from ..core import updates
+from ..core.errors import describe as describe_error
 from ..device.types import ConnectionState
 from .files_view import FilesView
 from .helpers import (
@@ -44,6 +52,12 @@ from .helpers import (
 from .photos_view import PhotosView
 from .preview import PreviewWindow
 from .settings_window import SettingsWindow
+from .updates_ui import (
+    UpdateApplyWorker,
+    UpdateCheckWorker,
+    UpdateDialog,
+    UpdateProgressDialog,
+)
 
 log = logging.getLogger("android_photo_transfer")
 
@@ -61,6 +75,18 @@ class MainWindow(QMainWindow):
         self._thumbnails = thumbnails
         self._preview_window: PreviewWindow | None = None
         self._transfer_dialog: _TransferDialog | None = None
+
+        # Update state. Only one check runs at a time (silent or manual);
+        # only one download/apply runs at a time.
+        self._silent_check_started = False
+        self._update_check_thread: QThread | None = None
+        self._update_check_worker: UpdateCheckWorker | None = None
+        self._update_check_manual = False
+        self._update_apply_thread: QThread | None = None
+        self._update_apply_worker: UpdateApplyWorker | None = None
+        self._update_cancel_event: threading.Event | None = None
+        self._update_progress_dialog: UpdateProgressDialog | None = None
+        self._update_temp_dir: str | None = None
 
         self.setWindowTitle("Android Photo Transfer")
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
@@ -109,6 +135,8 @@ class MainWindow(QMainWindow):
         self._scan_progress.setTextVisible(False)
         self._status_bar.addPermanentWidget(self._scan_progress)
         self._scan_progress.hide()
+
+        self._build_menu_bar()
 
         # Shortcuts: Ctrl+A ticks everything in the current view; F5 rescans.
         select_all = QShortcut(QKeySequence("Ctrl+A"), self)
@@ -191,6 +219,228 @@ class MainWindow(QMainWindow):
         device_id = self._phone_combo.itemData(index)
         if device_id:
             self._vm.select_phone(device_id)
+
+    # -- menu bar ---------------------------------------------------------------------
+    def _build_menu_bar(self) -> None:
+        help_menu = self.menuBar().addMenu("Help")
+        check_action = help_menu.addAction("Check for Updates...")
+        check_action.triggered.connect(self._on_manual_update_check)
+        self._startup_check_action = QAction("Check for updates on startup", self)
+        self._startup_check_action.setCheckable(True)
+        self._startup_check_action.setChecked(
+            self._settings_manager.current.check_updates_on_startup
+        )
+        self._startup_check_action.triggered.connect(self._on_startup_check_toggled)
+        help_menu.addAction(self._startup_check_action)
+        # Refresh the checkmark every time the menu opens, so a change made
+        # in the Settings window never leaves a stale checkmark behind.
+        help_menu.aboutToShow.connect(self._sync_startup_check_action)
+
+    def _sync_startup_check_action(self) -> None:
+        self._startup_check_action.setChecked(
+            self._settings_manager.current.check_updates_on_startup
+        )
+
+    def _on_startup_check_toggled(self, checked: bool) -> None:
+        settings = self._settings_manager.current
+        settings.check_updates_on_startup = checked
+        self._settings_manager.save()
+        log.info("Check for updates on startup turned %s", "on" if checked else "off")
+
+    # -- updates ------------------------------------------------------------------------
+    def start_silent_update_check(self) -> None:
+        """One quiet update check per launch, after the window shows.
+
+        Called from main() only, never from __init__, so test harnesses
+        that build the window directly never hit the network. Up to date:
+        nothing. Failure: a status-bar line at most, never a modal. Update
+        found: the update dialog.
+        """
+        if self._silent_check_started:
+            return
+        self._silent_check_started = True
+        if not self._settings_manager.current.check_updates_on_startup:
+            log.info("Update check on startup is off; skipping the silent check")
+            return
+        self._start_update_check(manual=False)
+
+    def _on_manual_update_check(self) -> None:
+        if self._update_check_thread is not None:
+            QMessageBox.information(
+                self, "Check for Updates", "Already checking for updates."
+            )
+            return
+        self._start_update_check(manual=True)
+
+    def _start_update_check(self, manual: bool) -> None:
+        if self._update_check_thread is not None:
+            return
+        log.info("Update check started (%s)", "manual" if manual else "silent")
+        self._update_check_manual = manual
+        self._update_check_thread = QThread(self)
+        self._update_check_thread.setObjectName("update-check")
+        self._update_check_worker = UpdateCheckWorker()
+        self._update_check_worker.moveToThread(self._update_check_thread)
+        self._update_check_worker.finished.connect(self._on_update_check_finished)
+        self._update_check_thread.started.connect(self._update_check_worker.run)
+        self._update_check_thread.finished.connect(self._update_check_worker.deleteLater)
+        self._update_check_thread.start()
+
+    @Slot(object)
+    def _on_update_check_finished(self, result: dict) -> None:
+        manual = self._update_check_manual
+        if self._update_check_thread is not None:
+            self._update_check_thread.quit()
+            self._update_check_thread.wait(3000)
+            self._update_check_thread = None
+            self._update_check_worker = None
+        state = result.get("state")
+        if state == "newer":
+            log.info(
+                "Update found: %s (running %s)", result.get("version"), __version__
+            )
+            self._show_update_dialog(result)
+        elif state == "current":
+            log.info("Update check: up to date (running %s)", __version__)
+            if manual:
+                latest = result.get("latest")
+                if latest:
+                    body = (
+                        "You have the latest version.\n\n"
+                        f"Version {latest} is the newest release."
+                    )
+                else:
+                    body = (
+                        "You have the latest version.\n\n"
+                        f"You are running version {__version__}."
+                    )
+                QMessageBox.information(self, "Check for Updates", body)
+        else:
+            reason = result.get("reason") or "The update check could not run."
+            log.warning("Update check failed: %s", reason)
+            if manual:
+                QMessageBox.warning(
+                    self,
+                    "Check for Updates",
+                    f"Could not check for updates.\n\n{reason}",
+                )
+            else:
+                # Silent check: a status-bar line at most, never a modal.
+                self._status_label.setText("Could not check for updates.")
+
+    def _show_update_dialog(self, info: dict) -> None:
+        dialog = UpdateDialog(info, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            log.info("Update declined for now")
+            return
+        if not dialog.update_requested:
+            return  # source run: "Open the release page" already opened it
+        if not updates.is_installed():
+            return  # never download or apply on a source run
+        self._start_update_pull(info)
+
+    def _start_update_pull(self, info: dict) -> None:
+        if self._update_apply_thread is not None:
+            return
+        version = info.get("version") or info.get("latest") or ""
+        log.info("Update to %s started", version)
+        self._update_temp_dir = tempfile.mkdtemp(
+            prefix="android-photo-transfer-update-"
+        )
+        self._update_cancel_event = threading.Event()
+        self._update_progress_dialog = UpdateProgressDialog(
+            self._update_cancel_event, self
+        )
+        self._update_progress_dialog.show()
+        self._update_apply_thread = QThread(self)
+        self._update_apply_thread.setObjectName("update-apply")
+        self._update_apply_worker = UpdateApplyWorker(
+            info, self._update_temp_dir, self._update_cancel_event
+        )
+        worker = self._update_apply_worker
+        worker.moveToThread(self._update_apply_thread)
+        worker.progress_changed.connect(self._on_update_progress)
+        worker.phase_changed.connect(self._on_update_phase)
+        worker.finished.connect(self._on_update_finished)
+        worker.failed.connect(self._on_update_failed)
+        worker.cancelled.connect(self._on_update_cancelled)
+        self._update_apply_thread.started.connect(worker.run)
+        self._update_apply_thread.finished.connect(worker.deleteLater)
+        self._update_apply_thread.start()
+
+    @Slot(object, object)
+    def _on_update_progress(self, downloaded, total) -> None:
+        if self._update_progress_dialog is not None:
+            self._update_progress_dialog.set_progress(downloaded, total)
+
+    @Slot(str)
+    def _on_update_phase(self, phase: str) -> None:
+        if self._update_progress_dialog is not None:
+            self._update_progress_dialog.set_phase(phase)
+
+    def _finish_update_pull(self) -> None:
+        """Close the progress dialog, stop the worker thread, drop the
+        temp download dir (the core already removed the zip on failure)."""
+        if self._update_progress_dialog is not None:
+            self._update_progress_dialog.close()
+            self._update_progress_dialog = None
+        if self._update_apply_thread is not None:
+            self._update_apply_thread.quit()
+            self._update_apply_thread.wait(3000)
+            self._update_apply_thread = None
+            self._update_apply_worker = None
+        self._update_cancel_event = None
+        if self._update_temp_dir is not None:
+            shutil.rmtree(self._update_temp_dir, ignore_errors=True)
+            self._update_temp_dir = None
+
+    @Slot(str)
+    def _on_update_finished(self, version: str) -> None:
+        self._finish_update_pull()
+        log.info("Update to %s installed", version)
+        answer = QMessageBox.question(
+            self,
+            "Update installed",
+            "Restart now to complete the update?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            log.info("Restart declined; the update completes on next launch")
+            return
+        # Close first: the close guard still gets its say (a running
+        # transfer asks before it is stopped), and a vetoed close aborts
+        # the restart instead of launching a second copy.
+        if not self.close():
+            log.info("Restart aborted: the window stayed open")
+            return
+        launcher = updates.launcher_path()
+        log.info("Restarting via %s", launcher)
+        try:
+            subprocess.Popen([launcher], start_new_session=True)
+        except OSError as exc:
+            log.error("Could not restart the app: %s", exc)
+            QMessageBox.warning(
+                self,
+                "Update installed",
+                "The update is installed, but the app could not restart itself.\n\n"
+                "Close the app and open it again to use the new version.",
+            )
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    @Slot(object)
+    def _on_update_failed(self, exc) -> None:
+        self._finish_update_pull()
+        log.error("Update failed: %s", exc)
+        QMessageBox.warning(self, "Update failed", describe_error(exc))
+
+    @Slot()
+    def _on_update_cancelled(self) -> None:
+        self._finish_update_pull()
+        log.info("Update download cancelled")
 
     # -- state panels ---------------------------------------------------------------
     @staticmethod
@@ -665,6 +915,27 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._vm.transfer.cancel()
+        # Stop any update work: cancel a running download, drop the temp
+        # dir, and let the short-lived check thread finish (it times out
+        # on its own after a few seconds).
+        if self._update_progress_dialog is not None:
+            self._update_progress_dialog.close()
+            self._update_progress_dialog = None
+        if self._update_cancel_event is not None:
+            self._update_cancel_event.set()
+        if self._update_apply_thread is not None:
+            self._update_apply_thread.quit()
+            self._update_apply_thread.wait(3000)
+            self._update_apply_thread = None
+            self._update_apply_worker = None
+        if self._update_temp_dir is not None:
+            shutil.rmtree(self._update_temp_dir, ignore_errors=True)
+            self._update_temp_dir = None
+        if self._update_check_thread is not None:
+            self._update_check_thread.quit()
+            self._update_check_thread.wait(3000)
+            self._update_check_thread = None
+            self._update_check_worker = None
         self._save_geometry()
         super().closeEvent(event)
 
